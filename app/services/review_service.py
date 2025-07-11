@@ -1,40 +1,25 @@
-from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from database import SessionLocal
+from typing import List, Optional
 from app.models.reviews import Review
 from app.models.books import Book
-from app.schemas.review import ReviewCreate, ReviewResponse
-from typing import List
+from app.schemas.review import ReviewCreate
+import logging
 
-router = APIRouter()
+logger = logging.getLogger(__name__)
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+class ReviewService:
+    @staticmethod
+    def create_review(db: Session, book_id: int, review_data: ReviewCreate) -> Optional[Review]:
+        book = db.query(Book).filter(Book.id == book_id).first()
+        if not book:
+            return None
 
-@router.post("/books/{book_id}/reviews", response_model=ReviewResponse)
-def create_review(book_id: int, review: ReviewCreate, db: Session = Depends(get_db)):
-    book = db.query(Book).filter(Book.id == book_id).first()
-    if not book:
-        raise HTTPException(status_code=404, detail="Book not found")
+        review = Review(**review_data.model_dump(), book_id=book_id)
+        db.add(review)
+        db.commit()
+        db.refresh(review)
+        return review
 
-    db_review = Review(
-        rating=review.rating,
-        comment=review.comment,
-        book_id=book_id
-    )
-    db.add(db_review)
-    db.commit()
-    db.refresh(db_review)
-    return db_review
-
-@router.get("/books/{book_id}/reviews", response_model=List[ReviewResponse])
-def get_reviews(book_id: int, db: Session = Depends(get_db)):
-    book = db.query(Book).filter(Book.id == book_id).first()
-    if not book:
-        raise HTTPException(status_code=404, detail="Book not found")
-
-    return db.query(Review).filter(Review.book_id == book_id).all()
+    @staticmethod
+    def get_reviews(db: Session, book_id: int) -> List[Review]:
+        return db.query(Review).filter(Review.book_id == book_id).all()
